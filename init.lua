@@ -16,30 +16,27 @@ hs.hotkey.bind({"alt"}, "P", function()
     hs.eventtap.keyStroke({}, "1")
 end)
 
--- Keeps the Caps Lock LED in sync with the custom sleep-mode toggle:
--- reads the current SleepDisabled flag on load, caches the desired state,
--- and rewrites the LED after every input-source change so macOS flicker
--- doesn't override it.
+-- Mirrors the custom sleep-mode toggle on the Caps Lock LED: polls the
+-- SleepDisabled flag every half second and rewrites the LED accordingly,
+-- and also re-reads it right after every input-source change so macOS
+-- flicker doesn't win the race.
 local function getDisablesleep()
     local out = hs.execute("pmset -g | awk '/SleepDisabled/{print $2}'")
     return out and out:gsub("%s+", "") == "1"
 end
 
-local desiredCapsLED = getDisablesleep()
-
-function capsLED(state)
-    desiredCapsLED = state and true or false
-    hs.hid.led.set("caps", desiredCapsLED)
+local function applyCapsLED()
+    hs.hid.led.set("caps", getDisablesleep())
 end
 
 local inputSourceWatcher = hs.distributednotifications.new(
     function(name, object)
-        hs.timer.doAfter(0.05, function()
-            hs.hid.led.set("caps", desiredCapsLED)
-        end)
+        hs.timer.doAfter(0.05, applyCapsLED)
     end,
     "com.apple.Carbon.TISNotifySelectedKeyboardInputSourceChanged"
 )
 
 inputSourceWatcher:start()
-hs.hid.led.set("caps", desiredCapsLED)
+
+hs.timer.new(0.5, applyCapsLED):start()
+applyCapsLED()
